@@ -24,6 +24,8 @@ plane_sens = [sen for sen in sens]
 # eidを格納するdict 初出かの判断で便利なのでdefaultdictを用いる
 eid_dic = defaultdict(str)
 
+
+
 # 解析結果を１行ずつみるループ
 # 代名詞を変換して、ゼロ照応されてる単語を文末に置いとく処理をする
 # sens[]が加工されていく
@@ -38,6 +40,7 @@ for ana in j:
     if '<EID:' in ana:
         eid_search = re.search(r'<EID:(.*?)>',ana)
         eid = int(eid_search.group(1))
+        eid_word = '[EID:' + str(eid) + ']'
 
         # eidの対象の単語は正規化代表表記にあるものとする ほんまにこれでええんか
         eid_word_search = re.search(r'<正規化代表表記:(.*?)>',ana)
@@ -50,8 +53,15 @@ for ana in j:
         if eid_dic[eid] == '':
             word = eid_word_search.group(1)
 
-            # <正規化代表表記:役目/やくめ> みたいなやつ対策 ほんまにこれでええんか
-            eid_dic[eid] = word.split('/')[0]
+            # 正規化代表表記の中で文章にある形をwとする
+            w = ''
+            for w in word.split('/'):
+                if w in plane_sens[sen_cnt-1]:
+                    eid_dic[eid] = w
+                    break
+
+            sens[sen_cnt-1] = sens[sen_cnt-1].replace(w,eid_word)
+
 
         # 既出のEIDのとき
         # 既出ということは！！変換のチャンス！！
@@ -71,20 +81,25 @@ for ana in j:
                 sho = sho_search.group(1)
                 c = c_search.group(1)
 
+                sens[sen_cnt-1] = sens[sen_cnt-1].replace(sho,eid_word)
+
                 # 照応詞候補とC用が同じならば、そのEIDの初出の時の正規化代表表記の単語と置き換え
                 if sho == c:
-                    sens[sen_cnt-1] = sens[sen_cnt-1].replace(sho,eid_dic[eid])
+                    if len(sho) > len(eid_dic[eid]):
+                        eid_dic[eid] = sho
 
                 # 違うなら照応詞候補とC用と置き換え
                 else:
-                    sens[sen_cnt-1] = sens[sen_cnt-1].replace(sho,c)
+                    if len(c) > len(eid_dic[eid]):
+                        eid_dic[eid] = c
 
 
+# ----------
     # ゼロ照応処理
     # ゼロ照応見つけたらとりあえず文末にspaceあけて単語置いとく
 
     # ガ 　文の主語やと思う
-    zero_search = re.findall(r'ガ/./(.*?)/',ana)
+    zero_search = re.search(r'<項構造:.*?ガ/./(.*?)/(\d+)[:|;|>]',ana)
 
     # ガ　がなければパス
     if zero_search == None:
@@ -92,23 +107,19 @@ for ana in j:
 
     # あったとき
     else:
+        zero = zero_search.group(1)
+        eid = int(zero_search.group(2))
+        eid_word = '[EID:' + str(eid) + ']'
+        if len(zero) > len(eid_dic[eid]):
+            eid_dic[eid] = zero
 
-        zero = '-'
-        i = 1
-        for s in zero_search:
-            if s != '-':
-                zero = s
-            i += 1
+        # 文になければ（ゼロ照応ならば）
+        if eid_word not in sens[sen_cnt-1]:
+            sens[sen_cnt-1] = eid_word + 'が' + sens[sen_cnt-1]
 
-
-        # 文になければ（ゼロ照応ならば）　（'-'は無視）
-        if (zero not in plane_sens[sen_cnt-1]) and (zero != '-'):
-
-            # sens[]の文末の'\n'をstripしてspaceを追加して単語置いとく
-            sens[sen_cnt-1] = zero + 'が' + sens[sen_cnt-1]
 
     # ヲ 　をって何ていうんや　目的語？？　それを見つけよーう
-    zero_search = re.search(r'ヲ/./(.*?)/',ana)
+    zero_search = re.search(r'<項構造:.*?ヲ/./(.*?)/(\d+)[:|;|>]',ana)
 
     # なければコンちぬー
     if zero_search == None:
@@ -117,10 +128,32 @@ for ana in j:
     # あったとき
     else:
         zero = zero_search.group(1)
+        eid = int(zero_search.group(2))
+        eid_word = '[EID:' + str(eid) + ']'
+        if len(zero) > len(eid_dic[eid]):
+            eid_dic[eid] = zero
 
         # ゼロ照応なら　文末に置いとく
-        if (zero not in plane_sens[sen_cnt-1]) and (zero != '-'):
-            sens[sen_cnt-1] = zero + 'を' + sens[sen_cnt-1]
+        if eid_word not in sens[sen_cnt-1]:
+            sens[sen_cnt-1] = eid_word + 'を' + sens[sen_cnt-1]
+# ------------ゼロ照応終わり
+
+
+con_sens = []
 
 for sen in sens:
-    print(sen.strip())
+    con_sen = ''
+    eid_search = re.findall(r'\[EID:(\d+)\]',sen)
+    for eid in eid_search:
+        if con_sen == '':
+            con_sen = sen
+        eid_word = '[EID:' + eid + ']'
+        con_sen = con_sen.replace(eid_word,eid_dic[int(eid)])
+    con_sens.append(con_sen)
+
+
+for plane_sen, con_sen in zip(plane_sens,con_sens):
+    if plane_sen != con_sen:
+        print(plane_sen.strip())
+        print(con_sen.strip())
+        print()
